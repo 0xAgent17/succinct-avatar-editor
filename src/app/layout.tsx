@@ -1,16 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "@/app/globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Succinct Avatar Editor",
@@ -27,8 +16,14 @@ export default function RootLayout({
       <head>
         <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap" rel="stylesheet" />
       </head>
-      <body style={{ fontFamily: "'Orbitron', Arial, sans-serif" }}>
-        {children}
+      <body>
+        <main style={{ 
+          minHeight: '100vh',
+          background: '#19191A',
+          fontFamily: "'Orbitron', Arial, sans-serif"
+        }}>
+          {children}
+        </main>
       </body>
     </html>
   );

@@ -166,6 +166,16 @@ export default function Home() {
     fetchGallery();
   }, [pendingUrl]);
 
+  const checkImageAvailability = async (url: string): Promise<boolean> => {
+    try {
+      const response = await fetch(url, { method: 'HEAD' });
+      return response.ok;
+    } catch (error) {
+      console.error('Error checking image availability:', error);
+      return false;
+    }
+  };
+
   // Сохранение в Supabase Storage и Database
   const handleSaveAvatar = async () => {
     if (!avatar) return;
@@ -175,98 +185,152 @@ export default function Home() {
     canvas.height = 560;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    // Создаем временный canvas для рендеринга
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = 560;
+    tempCanvas.height = 560;
+    const tempCtx = tempCanvas.getContext('2d');
+    if (!tempCtx) return;
     
-    // Рисуем белый фон
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // Рисуем базовое изображение
-    const baseImg = new window.Image();
-    baseImg.src = avatar;
-    await new Promise(res => { baseImg.onload = res; });
-    ctx.drawImage(baseImg, 0, 0, 560, 560);
+    try {
+      // Рисуем базовое изображение
+      const baseImg = new window.Image();
+      baseImg.src = avatar;
+      await new Promise(res => { baseImg.onload = res; });
+      tempCtx.drawImage(baseImg, 0, 0, 560, 560);
 
-    // Рисуем все кепки
-    for (const capInst of caps) {
-      const capObj = CAPS.find(c => c.key === capInst.key);
-      if (capObj?.src) {
-        const capImg = new window.Image();
-        capImg.src = capObj.src;
-        await new Promise(res => { capImg.onload = res; });
-        
-        ctx.save();
-        ctx.translate(capInst.x + capInst.size/2, capInst.y + capInst.size/2);
-        ctx.rotate(capInst.angle * Math.PI / 180);
-        if (capInst.flipX) ctx.scale(-1, 1);
-        
-        ctx.drawImage(
-          capImg,
-          -capInst.size/2,
-          -capImg.height/2 * (capInst.size/capImg.width),
-          capInst.size,
-          capImg.height * (capInst.size/capImg.width)
-        );
-        ctx.restore();
+      // Рисуем все кепки
+      for (const capInst of caps) {
+        const capObj = CAPS.find(c => c.key === capInst.key);
+        if (capObj?.src) {
+          const capImg = new window.Image();
+          capImg.src = capObj.src;
+          await new Promise(res => { capImg.onload = res; });
+          
+          tempCtx.save();
+          tempCtx.translate(capInst.x + capInst.size/2, capInst.y + capInst.size/2);
+          tempCtx.rotate(capInst.angle * Math.PI / 180);
+          if (capInst.flipX) tempCtx.scale(-1, 1);
+          
+          tempCtx.drawImage(
+            capImg,
+            -capInst.size/2,
+            -capImg.height/2 * (capInst.size/capImg.width),
+            capInst.size,
+            capImg.height * (capInst.size/capImg.width)
+          );
+          tempCtx.restore();
+        }
       }
-    }
 
-    // Рисуем все логотипы
-    for (const logoInst of logos) {
-      const logoObj = LOGOS.find(l => l.key === logoInst.key);
-      if (logoObj?.src) {
-        const logoImg = new window.Image();
-        logoImg.src = logoObj.src;
-        await new Promise(res => { logoImg.onload = res; });
-        
-        ctx.save();
-        ctx.translate(logoInst.x + logoInst.size/2, logoInst.y + logoInst.size/2);
-        ctx.rotate(logoInst.angle * Math.PI / 180);
-        if (logoInst.flipX) ctx.scale(-1, 1);
-        
-        ctx.drawImage(
-          logoImg,
-          -logoInst.size/2,
-          -logoImg.height/2 * (logoInst.size/logoImg.width),
-          logoInst.size,
-          logoImg.height * (logoInst.size/logoImg.width)
-        );
-        ctx.restore();
+      // Рисуем все логотипы
+      for (const logoInst of logos) {
+        const logoObj = LOGOS.find(l => l.key === logoInst.key);
+        if (logoObj?.src) {
+          const logoImg = new window.Image();
+          logoImg.src = logoObj.src;
+          await new Promise(res => { logoImg.onload = res; });
+          
+          tempCtx.save();
+          tempCtx.translate(logoInst.x + logoInst.size/2, logoInst.y + logoInst.size/2);
+          tempCtx.rotate(logoInst.angle * Math.PI / 180);
+          if (logoInst.flipX) tempCtx.scale(-1, 1);
+          
+          tempCtx.drawImage(
+            logoImg,
+            -logoInst.size/2,
+            -logoImg.height/2 * (logoInst.size/logoImg.width),
+            logoInst.size,
+            logoImg.height * (logoInst.size/logoImg.width)
+          );
+          tempCtx.restore();
+        }
       }
-    }
 
-    // Сохраняем в Supabase
-    const blob = await new Promise<Blob>((resolve) => {
-      canvas.toBlob((blob) => resolve(blob!), 'image/png');
-    });
+      // Копируем результат на основной canvas
+      ctx.drawImage(tempCanvas, 0, 0);
 
-    const filename = `avatar-${Date.now()}.png`;
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(filename, blob);
+      // Генерируем уникальное имя файла
+      const timestamp = Date.now();
+      const randomString = Math.random().toString(36).slice(2);
+      const fileName = `avatar_${timestamp}_${randomString}.png`;
+      
+      // Получаем данные изображения
+      const url = canvas.toDataURL('image/png');
+      const res = await fetch(url);
+      const blob = await res.blob();
 
-    if (uploadError) {
-      console.error('Error uploading:', uploadError);
-      return;
-    }
+      // Создаем временный URL для предварительного просмотра
+      const tempObjectUrl = URL.createObjectURL(blob);
+      
+      // Загружаем в Supabase
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, blob, {
+          contentType: 'image/png',
+          cacheControl: '0'
+        });
 
-    const { data: urlData } = await supabase.storage
-      .from('avatars')
-      .getPublicUrl(filename);
+      if (uploadError) {
+        throw new Error('Ошибка загрузки: ' + uploadError.message);
+      }
 
-    const publicUrl = urlData?.publicUrl;
-    if (publicUrl) {
-      const { error: dbError } = await supabase
+      // Получаем публичный URL
+      const { data: publicUrlData } = await supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+
+      if (!publicUrlData?.publicUrl) {
+        throw new Error('Не удалось получить публичный URL');
+      }
+
+      // Проверяем доступность файла
+      let isAvailable = false;
+      for (let i = 0; i < 10; i++) {
+        const checkResult = await fetch(publicUrlData.publicUrl, { method: 'HEAD' });
+        if (checkResult.ok) {
+          isAvailable = true;
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      if (!isAvailable) {
+        throw new Error('Файл недоступен после загрузки');
+      }
+
+      // Добавляем в галерею с временным URL
+      const { error: insertError } = await supabase
         .from('gallery')
-        .insert([{ url: publicUrl }]);
+        .insert({ url: publicUrlData.publicUrl });
 
-      if (dbError) {
-        console.error('Error saving to DB:', dbError);
-        return;
+      if (insertError) {
+        throw new Error('Ошибка сохранения в галерею: ' + insertError.message);
       }
 
-      // Обновляем UI
-      setPendingUrl(publicUrl);
-      setLastSavedUrl(publicUrl);
+      // Обновляем состояние с временным URL для мгновенного отображения
+      setGallery(g => [tempObjectUrl, ...g.slice(0, 29)]);
+      setPendingUrl(tempObjectUrl);
+      setLastSavedUrl(publicUrlData.publicUrl);
+
+      // Скачиваем файл
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'succinct_avatar.png';
+      a.click();
+
+      // Через секунду обновляем URL на постоянный
+      setTimeout(() => {
+        setGallery(g => [publicUrlData.publicUrl, ...g.slice(1)]);
+        setPendingUrl(null);
+        // Освобождаем временный URL
+        URL.revokeObjectURL(tempObjectUrl);
+      }, 1000);
+
+    } catch (error) {
+      console.error('Ошибка сохранения:', error);
+      alert('Ошибка сохранения: ' + (error as Error).message);
     }
   };
 
@@ -460,34 +524,66 @@ export default function Home() {
 
   // ВРЕМЕННАЯ ФУНКЦИЯ ДЛЯ ПОЛНОЙ ОЧИСТКИ ГАЛЕРЕИ (ТОЛЬКО ДЛЯ РАЗРАБОТЧИКА)
   const handleFullClearGallery = async () => {
-    // Получаем все записи из gallery
-    const { data, error } = await supabase.from('gallery').select('url');
-    if (error) {
-      alert('Ошибка получения галереи: ' + error.message);
-      return;
-    }
-    // Извлекаем имена файлов из url
-    const files = (data || []).map((item: any) => {
-      const match = item.url.match(/avatars\/(.*)$/);
-      return match ? match[1] : null;
-    }).filter(Boolean);
-    // Удаляем файлы из storage
-    if (files.length > 0) {
-      const { error: storageError } = await supabase.storage.from('avatars').remove(files);
-      if (storageError) {
-        alert('Ошибка удаления файлов из storage: ' + storageError.message);
+    try {
+      // 1. Сначала получаем список всех файлов из storage
+      const { data: storageData, error: storageListError } = await supabase
+        .storage
+        .from('avatars')
+        .list();
+
+      if (storageListError) {
+        console.error('Ошибка получения списка файлов:', storageListError);
+        alert('Ошибка получения списка файлов: ' + storageListError.message);
         return;
       }
+
+      // 2. Удаляем все файлы из storage
+      if (storageData && storageData.length > 0) {
+        const fileNames = storageData.map(file => file.name);
+        console.log('Удаляем файлы:', fileNames);
+        
+        const { error: deleteStorageError } = await supabase
+          .storage
+          .from('avatars')
+          .remove(fileNames);
+
+        if (deleteStorageError) {
+          console.error('Ошибка удаления файлов:', deleteStorageError);
+          alert('Ошибка удаления файлов: ' + deleteStorageError.message);
+          return;
+        }
+      }
+
+      // 3. Удаляем все записи из таблицы gallery одним запросом
+      const { error: deleteTableError } = await supabase
+        .from('gallery')
+        .delete()
+        .gte('id', 0); // Удаляем все записи
+
+      if (deleteTableError) {
+        console.error('Ошибка очистки таблицы:', deleteTableError);
+        alert('Ошибка очистки таблицы: ' + deleteTableError.message);
+        return;
+      }
+
+      // 4. Очищаем локальное состояние
+      setGallery([]);
+      setPendingUrl(null);
+      setLastSavedUrl(null);
+
+      console.log('Галерея успешно очищена');
+      alert('Галерея успешно очищена!');
+      
+      // 5. Принудительно обновляем страницу
+      window.location.reload();
+    } catch (error) {
+      console.error('Неожиданная ошибка:', error);
+      alert('Произошла неожиданная ошибка при очистке галереи');
     }
-    // Удаляем все записи из gallery
-    const { error: deleteError } = await supabase.from('gallery').delete().neq('url', '');
-    if (deleteError) {
-      alert('Ошибка удаления записей из gallery: ' + deleteError.message);
-      return;
-    }
-    setGallery([]);
-    alert('Галерея полностью очищена!');
   };
+
+  const [loadingImages, setLoadingImages] = useState<Record<string, boolean>>({});
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
   return (
     <div className={styles.pageCustomLayout} onMouseMove={onCapMouseMove} onMouseUp={onCapMouseUp}>
@@ -723,67 +819,7 @@ export default function Home() {
           <button
             className={styles.neonButton}
             style={{ marginTop: 40, fontSize: 22, padding: '18px 56px', width: 320, alignSelf: 'center' }}
-            onClick={async () => {
-              if (!avatar) return;
-              const canvas = document.createElement('canvas');
-              canvas.width = 560;
-              canvas.height = 560;
-              const ctx = canvas.getContext('2d');
-              if (!ctx) return;
-              ctx.fillStyle = '#fff';
-              ctx.fillRect(0, 0, canvas.width, canvas.height);
-              const baseImg = new window.Image();
-              baseImg.src = avatar;
-              await new Promise(res => { baseImg.onload = res; });
-              ctx.drawImage(baseImg, 0, 0, 560, 560);
-              if (cap !== 'none') {
-                const capObj = CAPS.find(c => c.key === cap);
-                if (capObj?.src) {
-                  const capImg = new window.Image();
-                  capImg.src = capObj.src;
-                  await new Promise(res => { capImg.onload = res; });
-                  ctx.save();
-                  ctx.translate(capPos.x + capSize/2, capPos.y + capImg.height/2 * (capSize/capImg.width));
-                  ctx.rotate(capAngle * Math.PI / 180);
-                  ctx.drawImage(capImg, -capSize/2, -capImg.height/2 * (capSize/capImg.width), capSize, capImg.height * (capSize/capImg.width));
-                  ctx.restore();
-                }
-              }
-              if (logo !== 'none') {
-                const logoObj = LOGOS.find(l => l.key === logo);
-                if (logoObj?.src) {
-                  const logoImg = new window.Image();
-                  logoImg.src = logoObj.src;
-                  await new Promise(res => { logoImg.onload = res; });
-                  ctx.save();
-                  ctx.translate(logoPos.x + logoSize/2, logoPos.y + logoImg.height/2 * (logoSize/logoImg.width));
-                  ctx.rotate(logoAngle * Math.PI / 180);
-                  ctx.drawImage(logoImg, -logoSize/2, -logoImg.height/2 * (logoSize/logoImg.width), logoSize, logoImg.height * (logoSize/logoImg.width));
-                  ctx.restore();
-                }
-              }
-              const url = canvas.toDataURL('image/png');
-              // Скачивание
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = 'succinct_avatar.png';
-              a.click();
-              // Сохраняем в Supabase Storage и галерею
-              const fileName = `avatar_${Date.now()}.png`;
-              const res = await fetch(url);
-              const arrayBuffer = await res.arrayBuffer();
-              const pngFile = new File([arrayBuffer], fileName, { type: 'image/png' });
-              const { data: storageData, error: storageError } = await supabase.storage.from('avatars').upload(fileName, pngFile, { upsert: true });
-              if (!storageError) {
-                const publicUrl = `https://exhskzlqczlrnoitfuij.supabase.co/storage/v1/object/public/avatars/${fileName}`;
-                await supabase.from('gallery').insert({ url: publicUrl });
-                setGallery(g => [publicUrl, ...g].slice(0, 30));
-                setPendingUrl(publicUrl);
-                setLastSavedUrl(publicUrl); // Для шаринга
-              } else {
-                alert('Ошибка загрузки: ' + storageError.message);
-              }
-            }}
+            onClick={handleSaveAvatar}
             disabled={!avatar}
           >
             Download avatar
@@ -820,13 +856,72 @@ export default function Home() {
         )}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 32, justifyContent: 'center', alignItems: 'flex-start', maxHeight: '80vh', overflowY: 'auto' }}>
           {gallery.map((img, i) => (
-            <img
+            <div
               key={i}
-              src={img}
-              alt={`gallery_${i}`}
-              className={i === 0 && pendingUrl ? styles.galleryImgAnimated : ''}
-              style={{ width: 180, height: 180, borderRadius: 20, boxShadow: '0 0 24px #f06acd', objectFit: 'cover', background: '#fff2', transition: 'box-shadow 0.2s, transform 0.2s, opacity 0.2s' }}
-            />
+              style={{
+                position: 'relative',
+                width: 180,
+                height: 180,
+                borderRadius: 20,
+                overflow: 'hidden',
+                background: '#fff2',
+                boxShadow: '0 0 24px #f06acd'
+              }}
+            >
+              {loadingImages[img] && (
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'rgba(0,0,0,0.5)',
+                  color: '#fff',
+                  fontSize: 14
+                }}>
+                  Loading...
+                </div>
+              )}
+              {failedImages[img] && (
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'rgba(0,0,0,0.5)',
+                  color: '#fff',
+                  fontSize: 14,
+                  textAlign: 'center',
+                  padding: '0 10px'
+                }}>
+                  Failed to load image
+                </div>
+              )}
+              <img
+                src={img}
+                alt={`gallery_${i}`}
+                className={i === 0 && pendingUrl ? styles.galleryImgAnimated : ''}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  transition: 'transform 0.2s, opacity 0.2s',
+                  opacity: failedImages[img] ? 0.3 : 1
+                }}
+                onLoadStart={() => {
+                  setLoadingImages(prev => ({ ...prev, [img]: true }));
+                  setFailedImages(prev => ({ ...prev, [img]: false }));
+                }}
+                onLoad={() => {
+                  setLoadingImages(prev => ({ ...prev, [img]: false }));
+                }}
+                onError={() => {
+                  setLoadingImages(prev => ({ ...prev, [img]: false }));
+                  setFailedImages(prev => ({ ...prev, [img]: true }));
+                }}
+              />
+            </div>
           ))}
         </div>
       </section>
